@@ -846,58 +846,59 @@ impl MultiProgress {
         Ok(())
     }
 
-    pub fn flush(&self, clear: bool) -> io::Result<()> {
+    pub fn flush(&self) -> io::Result<()> {
+        // ¿Why clear on flush? if want clear, use join_and_clear
         // if self.joining.load(Ordering::Acquire) {
         //     panic!("Already joining!");
         // }
-        // self.joining.store(true, Ordering::Release);
+        self.joining.store(true, Ordering::Release);
 
         let move_cursor = self.state.read().move_cursor;
         // while !self.is_done() {
-            let (idx, draw_state) = self.rx.recv().unwrap();
-            let ts = draw_state.ts;
-            let force_draw = draw_state.finished || draw_state.force_draw;
+        let (idx, draw_state) = self.rx.recv().unwrap();
+        let ts = draw_state.ts;
+        let force_draw = draw_state.finished || draw_state.force_draw;
 
-            let mut state = self.state.write();
-            if draw_state.finished {
-                state.objects[idx].done = true;
-            }
-            state.objects[idx].draw_state = Some(draw_state);
+        let mut state = self.state.write();
+        if draw_state.finished {
+            state.objects[idx].done = true;
+        }
+        state.objects[idx].draw_state = Some(draw_state);
 
-            // the rest from here is only drawing, we can skip it.
-            // if state.draw_target.is_hidden() {
-            //     continue;
-            // }
-
-            let mut lines = vec![];
-            for obj in state.objects.iter() {
-                if let Some(ref draw_state) = obj.draw_state {
-                    lines.extend_from_slice(&draw_state.lines[..]);
-                }
-            }
-
-            let finished = !state.objects.iter().any(|ref x| x.done);
-            state.draw_target.apply_draw_state(ProgressDrawState {
-                lines,
-                force_draw,
-                move_cursor,
-                finished,
-                ts,
-            })?;
+        // the rest from here is only drawing, we can skip it.
+        // if state.draw_target.is_hidden() {
+        //     continue;
         // }
 
-        if clear {
-            let mut state = self.state.write();
-            state.draw_target.apply_draw_state(ProgressDrawState {
-                lines: vec![],
-                finished: true,
-                force_draw: true,
-                move_cursor,
-                ts: Instant::now(),
-            })?;
+        let mut lines = vec![];
+        for obj in state.objects.iter() {
+            if let Some(ref draw_state) = obj.draw_state {
+                lines.extend_from_slice(&draw_state.lines[..]);
+            }
         }
 
-        // self.joining.store(false, Ordering::Release);
+        let finished = !state.objects.iter().any(|ref x| x.done);
+        state.draw_target.apply_draw_state(ProgressDrawState {
+            lines,
+            force_draw,
+            move_cursor,
+            finished,
+            ts,
+        })?;
+        // }
+
+        // if clear {
+        //     let mut state = self.state.write();
+        //     state.draw_target.apply_draw_state(ProgressDrawState {
+        //         lines: vec![],
+        //         finished: true,
+        //         force_draw: true,
+        //         move_cursor,
+        //         ts: Instant::now(),
+        //     })?;
+        // }
+
+        self.joining.store(false, Ordering::Release);
 
         Ok(())
     }
